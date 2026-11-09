@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPC 控制图工具 · 八种常规控制图</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --line:#e4e7ec; --text:#1f2328;
+    --muted:#6b7280; --accent:#2f6fed; --green:#12805c; --red:#d93a3a;
+    --mono:"Consolas","SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:"Microsoft YaHei","PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
+    font-size:14px; line-height:1.6;
+  }
+  header{
+    background:var(--panel); border-bottom:1px solid var(--line);
+    padding:18px 28px; display:flex; align-items:baseline; gap:14px;
+  }
+  header h1{font-size:17px; margin:0; font-weight:600; letter-spacing:.5px}
+  header .sub{color:var(--muted); font-size:12.5px}
+  main{
+    display:grid; grid-template-columns:360px 1fr; gap:18px;
+    padding:18px 28px 40px; align-items:start;
+  }
+  @media (max-width:1080px){ main{grid-template-columns:1fr} }
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:16px 16px 18px;
+  }
+  .panel h2{
+    font-size:13px; font-weight:600; margin:0 0 12px; color:var(--muted);
+    letter-spacing:1px; text-transform:uppercase;
+  }
+  label{display:block; font-size:12.5px; color:var(--muted); margin:12px 0 5px}
+  label:first-of-type{margin-top:0}
+  select, input[type=text], input[type=number], textarea{
+    width:100%; border:1px solid var(--line); border-radius:6px; background:#fbfcfd;
+    padding:8px 10px; font-size:13px; color:var(--text); font-family:inherit;
+    outline:none; transition:border-color .15s;
+  }
+  select:focus, input:focus, textarea:focus{border-color:var(--accent); background:#fff}
+  input:disabled{background:#f2f4f6; color:#a9aeb5; border-style:dashed; cursor:not-allowed}
+  textarea{resize:vertical; font-family:var(--mono); font-size:12.5px; line-height:1.55; min-height:150px}
+  .row{display:flex; gap:10px}
+  .row > div{flex:1}
+  .btns{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap}
+  button{
+    border:1px solid var(--line); background:#fff; color:var(--text);
+    padding:8px 13px; border-radius:6px; font-size:13px; cursor:pointer;
+    font-family:inherit; transition:.15s;
+  }
+  button:hover{border-color:#c7ccd4; background:#fafbfc}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  button.primary:hover{background:#255ed6; border-color:#255ed6}
+  .hint{font-size:11.5px; color:var(--muted); margin-top:6px; line-height:1.55}
+  .err{color:var(--red); font-size:12.5px; margin-top:8px; display:none}
+
+  .statbar{display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:10px; margin-bottom:14px}
+  .stat{background:#fafbfc; border:1px solid var(--line); border-radius:8px; padding:9px 12px}
+  .stat .k{font-size:11.5px; color:var(--muted)}
+  .stat .v{font-family:var(--mono); font-size:15px; margin-top:2px; letter-spacing:.3px}
+  .stat .v.up{color:var(--red)}
+  .stat .v.ok{color:var(--green)}
+
+  canvas{width:100%; display:block}
+  .chartwrap{border:1px solid var(--line); border-radius:8px; background:#fff; padding:6px 6px 2px}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px; margin-top:10px}
+  th,td{border-bottom:1px solid var(--line); padding:5px 8px; text-align:right; font-family:var(--mono)}
+  th{color:var(--muted); font-weight:500; font-family:inherit; font-size:12px; background:#fafbfc}
+  th:first-child, td:first-child{text-align:left}
+  tr.hit td{background:#fff4f4; color:#a52626}
+
+  .verdict{
+    margin-top:14px; padding:11px 14px; border-radius:8px; font-size:13px;
+    border:1px solid var(--line); background:#fafbfc;
+  }
+  .verdict.bad{border-color:#f3c9c9; background:#fff6f6; color:#a52626}
+  .verdict.good{border-color:#c4e3d8; background:#f4fbf8; color:#0d6b4b}
+  .verdict ul{margin:6px 0 0 18px; padding:0}
+  .verdict li{margin:3px 0}
+
+  details{margin-top:14px; border-top:1px solid var(--line); padding-top:12px}
+  summary{cursor:pointer; font-size:12.5px; color:var(--accent); outline:none}
+  .formula{font-family:var(--mono); font-size:12px; color:#374151; line-height:1.9; margin-top:8px; white-space:pre-wrap}
+  .legend{display:flex; gap:16px; font-size:11.5px; color:var(--muted); margin:2px 0 8px 4px; flex-wrap:wrap}
+  .legend i{display:inline-block; width:14px; height:2px; vertical-align:middle; margin-right:5px}
+  .sw-dot{width:7px !important; height:7px !important; border-radius:50%}
+</style>
+</head>
+<body>
+<header>
+  <h1>SPC 控制图工具</h1>
+  <span class="sub">八种常规控制图 · 本地离线运行 · 输入数据即出图</span>
+</header>
+
+<main>
+  <!-- ================= 左：输入 ================= -->
+  <section class="panel">
+    <h2>数据与参数</h2>
+
+    <label>控制图类型</label>
+    <select id="type">
+      <option value="xbs">均值-标准差控制图（x̄-s）</option>
+      <option value="xbr">均值-极差控制图（x̄-R）</option>
+      <option value="mer">中位数-极差控制图（Me-R）</option>
+      <option value="imr">单值-移动极差控制图（I-MR）</option>
+      <option value="p">不合格品率控制图（p）</option>
+      <option value="np">不合格品数控制图（np）</option>
+      <option value="u">单位缺陷数控制图（u）</option>
+      <option value="c">缺陷数控制图（c）</option>
+    </select>
+
+    <label id="dataLabel">数据（每行一批，用空格 / Tab / 逗号分隔）</label>
+    <textarea id="data" spellcheck="false"></textarea>
+    <div class="hint" id="dataHint"></div>
+
+    <div class="row">
+      <div>
+        <label>样本量 n / 检验单位数</label>
+        <input type="number" id="nInput" min="1" step="1" value="5">
+      </div>
+      <div>
+        <label>小数位</label>
+        <input type="number" id="digits" min="0" max="6" step="1" value="2">
+      </div>
+    </div>
+    <div class="hint" id="nHint"></div>
+
+    <div class="btns">
+      <button class="primary" id="calc">计算并绘图</button>
+      <button id="demo">载入示例</button>
+      <button id="clear">清空</button>
+    </div>
+    <div class="err" id="err"></div>
+  </section>
+
+  <!-- ================= 右：结果 ================= -->
+  <section class="panel">
+    <h2 id="resultTitle">结果</h2>
+    <div class="statbar" id="stats"></div>
+    <div class="chartwrap"><canvas id="chart"></canvas></div>
+    <div id="verdict"></div>
+    <div id="tableBox"></div>
+    <details>
+      <summary>计算说明（公式与所用系数，答辩可直接对照）</summary>
+      <div class="formula" id="formula"></div>
+    </details>
+  </section>
+</main>
+
+<script>
+"use strict";
+/* ============================================================
+   一、系数表（与课程课件表2-1、表3-2、表3-4 一致，n = 2…25）
+   ============================================================ */
+const C2 = [null,null,0.7979,0.8862,0.9213,0.9400,0.9515,0.9554,0.9650,0.9693,0.9727,
+            0.9754,0.9776,0.9794,0.9810,0.9832,0.9835,0.9845,0.9854,0.9862,0.9869,
+            0.9876,0.9882,0.9887,0.9892,0.9896];
+const C3 = [null,null,0.6028,0.4632,0.3888,0.3412,0.3076,0.2822,0.2621,0.2458,0.2322,
+            0.2207,0.2107,0.2019,0.1942,0.1872,0.1810,0.1754,0.1702,0.1655,0.1611,
+            0.1571,0.1534,0.1499,0.1466,0.1436];
+const D2 = [null,null,1.128,1.693,2.059,2.326,2.534,2.704,2.847,2.970,3.078,
+            3.173,3.258,3.336,3.407,3.472,3.532,3.588,3.640,3.698,3.735,
+            3.778,3.819,3.858,3.895,3.931];
+const A2 = [null,null,1.880,1.023,0.729,0.577,0.483,0.419,0.373,0.337,0.308,
+            0.285,0.266,0.249,0.235,0.223,0.212,0.203,0.194,0.187,0.180,
+            0.173,0.167,0.162,0.157,0.153];
+const D3 = [null,null,0,0,0,0,0,0.076,0.136,0.184,0.223,
+            0.256,0.283,0.307,0.328,0.347,0.363,0.378,0.391,0.403,0.415,
+            0.425,0.434,0.443,0.451,0.459];
+const D4 = [null,null,3.267,2.574,2.282,2.114,2.004,1.924,1.864,1.816,1.777,
+            1.744,1.717,1.693,1.672,1.653,1.637,1.622,1.608,1.597,1.585,
+            1.575,1.566,1.557,1.548,1.541];
+
+/* 中位数图：sd(中位数)/σ 的数值解（种子固定的蒙特卡洛，结果可复现） */
+const _medSd = {};
+function medSdFactor(n){
+  if(_medSd[n]) return _medSd[n];
+  let seed = 20240101 + n * 7919;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return (seed + 0.5) / 4294967296; };
+  const N = 200000, buf = new Float64Array(n);
+  let s2 = 0;
+  for(let t = 0; t < N; t++){
+    for(let j = 0; j < n; j++){
+      const u1 = rnd(), u2 = rnd();
+      buf[j] = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    }
+    const a = Array.from(buf).sort((x, y) => x - y);
+    const med = n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+    s2 += med * med;
+  }
+  return (_medSd[n] = Math.sqrt(s2 / N));
+}
+
+/* ============================================================
+   二、工具
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+const std = a => { const m = mean(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / (a.length - 1)); };
+const fmt = (v, d) => (Number.isFinite(v) ? v.toFixed(d) : "—");
+const arr = (v, n2) => Array(n2).fill(v);
+
+/* ============================================================
+   三、数据解析
+   ============================================================ */
+function parseMatrix(text){
+  const rows = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  if(!rows.length) throw "请输入数据。";
+  const mat = rows.map(r => r.split(/[\s,;，；]+/).filter(Boolean).map(Number));
+  mat.forEach((r, i) => { if(r.some(v => !Number.isFinite(v))) throw `第 ${i + 1} 行含有无法识别的数字。`; });
+  return mat;
+}
+
+const TYPES = {
+  xbs:{kind:"var", label:"均值-标准差控制图（x̄-s）"},
+  xbr:{kind:"var", label:"均值-极差控制图（x̄-R）"},
+  mer:{kind:"var", label:"中位数-极差控制图（Me-R）"},
+  imr:{kind:"var", label:"单值-移动极差控制图（I-MR）"},
+  p:{kind:"attr", label:"不合格品率控制图（p）"},
+  np:{kind:"attr", label:"不合格品数控制图（np）"},
+  u:{kind:"attr", label:"单位缺陷数控制图（u）"},
+  c:{kind:"attr", label:"缺陷数控制图（c）"}
+};
+
+/* ============================================================
+   四、判异规则（课件 3.2.4 的 8 条）
+   ============================================================ */
+function checkRules(vals, ucl, lcl, cl, sig){
+  const k = vals.length, hits = [];
+  const z = i => (sig[i] > 0 ? (vals[i] - cl) / sig[i] : 0);
+  const add = (name, idx) => hits.push({name, idx});
+
+  const r1 = [];
+  for(let i = 0; i < k; i++) if(vals[i] > ucl[i] + 1e-9 || vals[i] < lcl[i] - 1e-9) r1.push(i);
+  if(r1.length) add("规则1：点超出控制限", r1);
+
+  for(let i = 0; i + 9 <= k; i++){
+    const seg = z(i); let allUp = true, allDn = true;
+    for(let j = i; j < i + 9; j++){ if(z(j) <= 0) allUp = false; if(z(j) >= 0) allDn = false; }
+    if(allUp || allDn){ add("规则2：连续9点在中心线同一侧", [...Array(9)].map((_, j) => i + j)); break; }
+  }
+  for(let i = 0; i + 6 <= k; i++){
+    let up = true, dn = true;
+    for(let j = i + 1; j < i + 6; j++){ if(!(vals[j] > vals[j - 1])) up = false; if(!(vals[j] < vals[j - 1])) dn = false; }
+    if(up || dn){ add("规则3：连续6点递增或递减", [...Array(6)].map((_, j) => i + j)); break; }
+  }
+  if(k >= 14){
+    for(let i = 0; i + 14 <= k; i++){
+      let ok = true;
+      for(let j = i + 1; j < i + 14; j++){
+        const d1 = vals[j] - vals[j - 1], d0 = vals[j - 1] - vals[j - 2];
+        if(!(d1 * d0 < 0)) { ok = false; break; }
+      }
+      if(ok){ add("规则4：连续14点中相邻点交替上下", [...Array(14)].map((_, j) => i + j)); break; }
+    }
+  }
+  for(let i = 0; i + 3 <= k; i++){
+    const up = z(i) > 2, mid = z(i + 1) > 2, dn3 = z(i + 2) > 2;
+    const nu = (up ? 1 : 0) + (mid ? 1 : 0) + (dn3 ? 1 : 0);
+    const lu = z(i) < -2, lm = z(i + 1) < -2, ld = z(i + 2) < -2;
+    const nl = (lu ? 1 : 0) + (lm ? 1 : 0) + (ld ? 1 : 0);
+    if(nu >= 2 || nl >= 2){ add("规则5：连续3点中有2点落在同侧B区以外", [i, i + 1, i + 2]); break; }
+  }
+  for(let i = 0; i + 5 <= k; i++){
+    let cu = 0, cl2 = 0;
+    for(let j = i; j < i + 5; j++){ if(z(j) > 1) cu++; if(z(j) < -1) cl2++; }
+    if(cu >= 4 || cl2 >= 4){ add("规则6：连续5点中有4点落在同侧C区以外", [...Array(5)].map((_, j) => i + j)); break; }
+  }
+  if(k >= 15){
+    for(let i = 0; i + 15 <= k; i++){
+      let ok = true;
+      for(let j = i; j < i + 15; j++) if(Math.abs(z(j)) >= 1){ ok = false; break; }
+      if(ok){ add("规则7：连续15点落在中心线两侧的C区内", [...Array(15)].map((_, j) => i + j)); break; }
+    }
+  }
+  for(let i = 0; i + 8 <= k; i++){
+    let ok = true;
+    for(let j = i; j < i + 8; j++) if(Math.abs(z(j)) <= 1){ ok = false; break; }
+    if(ok){ add("规则8：连续8点落在中心线两侧且无一点在C区内", [...Array(8)].map((_, j) => i + j)); break; }
+  }
+  return hits;
+}
+
+/* ============================================================
+   五、各控制图计算
+   ============================================================ */
+function compute(type, mat, nGiven){
+  const out = {panels:[], hits:[], stats:[], table:null, formula:"", note:""};
+
+  if(TYPES[type].kind === "var"){
+    const k = mat.length, n = mat[0].length;
+    mat.forEach((r, i) => { if(r.length !== n) throw `第 ${i + 1} 行有 ${r.length} 个数据，与第 1 行的 ${n} 个不一致。`; });
+    if(k < 2) throw "至少需要 2 批数据。";
+    if(n < 2 && type !== "imr") throw "计量值控制图每批至少需要 2 个数据（单值图请选 I-MR）。";
+    if(n > 25) throw "系数表支持每批 2~25 个数据。";
+
+    const rows = mat.map(r => {
+      const m = mean(r), s = std(r), R = Math.max(...r) - Math.min(...r);
+      const sorted = [...r].sort((a, b) => a - b);
+      const med = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+      return {m, s, R, med};
+    });
+    const xbarbar = mean(rows.map(r => r.m));
+    const sbar = mean(rows.map(r => r.s));
+    const rbar = mean(rows.map(r => r.R));
+    const mebar = mean(rows.map(r => r.med));
+    const kk = rows.length;
+
+    if(type === "xbs"){
+      const AS = 3 / (C2[n] * Math.sqrt(n));
+      const BU = 1 + 3 * C3[n] / C2[n];
+      const BL = Math.max(0, 1 - 3 * C3[n] / C2[n]);
+      const ux = xbarbar + AS * sbar, lx = xbarbar - AS * sbar;
+      const us = BU * sbar, ls = BL * sbar;
+      out.panels.push(
+        {title:`x̄ 图（每批 n=${n}）`, ylab:"批均值", vals:rows.map(r => r.m), cl:xbarbar,
+         ucl:arr(ux, kk), lcl:arr(lx, kk), sig:arr((ux - xbarbar) / 3, kk)},
+        {title:"s 图", ylab:"批标准差", vals:rows.map(r => r.s), cl:sbar,
+         ucl:arr(us, kk), lcl:arr(ls, kk), sig:arr((us - sbar) / 3, kk)}
+      );
+      out.stats = [
+        ["批数 k", kk], ["样本量 n", n], ["x̄̄（总均值）", fmt(xbarbar, 3)],
+        ["s̄（平均标准差）", fmt(sbar, 3)], ["x̄ 图 UCL / LCL", `${fmt(ux, 3)} / ${fmt(lx, 3)}`],
+        ["s 图 UCL / LCL", `${fmt(us, 3)} / ${fmt(ls, 3)}`]
+      ];
+      out.formula =
+`n = ${n}，查表3-2：A_S = 3/(C2·√n) = 3/(${C2[n]}×√${n}) = ${AS.toFixed(4)}
+            B_U = 1 + 3C3/C2 = 1 + 3×${C3[n]}/${C2[n]} = ${BU.toFixed(4)}
+            B_L = max{0, 1 − 3C3/C2} = ${BL.toFixed(4)}
+
+x̄ 图：CL = x̄̄ = ${xbarbar.toFixed(4)}
+      UCL = x̄̄ + A_S·s̄ = ${xbarbar.toFixed(4)} + ${AS.toFixed(4)}×${sbar.toFixed(4)} = ${ux.toFixed(4)}
+      LCL = x̄̄ − A_S·s̄ = ${(xbarbar - AS * sbar).toFixed(4)}
+s 图：CL = s̄ = ${sbar.toFixed(4)}
+      UCL = B_U·s̄ = ${us.toFixed(4)}
+      LCL = B_L·s̄ = ${ls.toFixed(4)}`;
+      out.table = {
+        head:["批号", ...Array.from({length:n}, (_, j) => "x" + (j + 1)), "均值 x̄", "标准差 s"],
+        rows: mat.map((r, i) => [i + 1, ...r, fmt(rows[i].m, 3), fmt(rows[i].s, 3)])
+      };
+    }
+
+    if(type === "xbr"){
+      const A2v = A2[n], D3v = D3[n], D4v = D4[n];
+      const ux = xbarbar + A2v * rbar, lx = xbarbar - A2v * rbar;
+      const uR = D4v * rbar, lR = D3v * rbar;
+      out.panels.push(
+        {title:`x̄ 图（每批 n=${n}）`, ylab:"批均值", vals:rows.map(r => r.m), cl:xbarbar,
+         ucl:arr(ux, kk), lcl:arr(lx, kk), sig:arr((ux - xbarbar) / 3, kk)},
+        {title:"R 图", ylab:"批极差", vals:rows.map(r => r.R), cl:rbar,
+         ucl:arr(uR, kk), lcl:arr(lR, kk), sig:arr((uR - rbar) / 3, kk)}
+      );
+      out.stats = [
+        ["批数 k", kk], ["样本量 n", n], ["x̄̄（总均值）", fmt(xbarbar, 3)],
+        ["R̄（平均极差）", fmt(rbar, 3)], ["x̄ 图 UCL / LCL", `${fmt(ux, 3)} / ${fmt(lx, 3)}`],
+        ["R 图 UCL / LCL", `${fmt(uR, 3)} / ${fmt(lR, 3)}`]
+      ];
+      out.formula =
+`n = ${n}，查表3-4：A2 = ${A2v}，D3 = ${D3v}，D4 = ${D4v}
+
+x̄ 图：CL = x̄̄ = ${xbarbar.toFixed(4)}，UCL = x̄̄ + A2·R̄ = ${ux.toFixed(4)}，LCL = x̄̄ − A2·R̄ = ${lx.toFixed(4)}
+R 图：CL = R̄ = ${rbar.toFixed(4)}，UCL = D4·R̄ = ${uR.toFixed(4)}，LCL = D3·R̄ = ${lR.toFixed(4)}
+（σ 的估计：σ̂ = R̄/d2 = ${rbar.toFixed(4)}/${D2[n]} = ${(rbar / D2[n]).toFixed(4)}）`;
+      out.table = {
+        head:["批号", ...Array.from({length:n}, (_, j) => "x" + (j + 1)), "均值 x̄", "极差 R"],
+        rows: mat.map((r, i) => [i + 1, ...r, fmt(rows[i].m, 3), fmt(rows[i].R, 3)])
+      };
+    }
+
+    if(type === "mer"){
+      const kMe = medSdFactor(n);
+      const sigHat = rbar / D2[n];
+      const half = 3 * kMe * sigHat;
+      const uM = mebar + half, lM = mebar - half;
+      const uR = D4[n] * rbar, lR = D3[n] * rbar;
+      out.panels.push(
+        {title:`Me 图（每批 n=${n}）`, ylab:"批中位数", vals:rows.map(r => r.med), cl:mebar,
+         ucl:arr(uM, kk), lcl:arr(lM, kk), sig:arr((uM - mebar) / 3, kk)},
+        {title:"R 图", ylab:"批极差", vals:rows.map(r => r.R), cl:rbar,
+         ucl:arr(uR, kk), lcl:arr(lR, kk), sig:arr((uR - rbar) / 3, kk)}
+      );
+      out.stats = [
+        ["批数 k", kk], ["样本量 n", n], ["Me 均值", fmt(mebar, 3)],
+        ["R̄（平均极差）", fmt(rbar, 3)], ["Me 图 UCL / LCL", `${fmt(uM, 3)} / ${fmt(lM, 3)}`],
+        ["R 图 UCL / LCL", `${fmt(uR, 3)} / ${fmt(lR, 3)}`]
+      ];
+      out.formula =
+`n = ${n}，查表3-4：D3 = ${D3[n]}，D4 = ${D4[n]}，d2 = ${D2[n]}
+
+σ̂ = R̄/d2 = ${rbar.toFixed(4)}/${D2[n]} = ${sigHat.toFixed(4)}
+中位数标准差 sd(Me) = ${kMe.toFixed(4)}·σ̂（由正态分布数值模拟求得，n=${n}）
+
+Me 图：CL = M̄e = ${mebar.toFixed(4)}
+       UCL = M̄e + 3·sd(Me) = ${uM.toFixed(4)}
+       LCL = M̄e − 3·sd(Me) = ${lM.toFixed(4)}
+R 图：CL = R̄ = ${rbar.toFixed(4)}，UCL = D4·R̄ = ${uR.toFixed(4)}，LCL = D3·R̄ = ${lR.toFixed(4)}`;
+      out.table = {
+        head:["批号", ...Array.from({length:n}, (_, j) => "x" + (j + 1)), "中位数 Me", "极差 R"],
+        rows: mat.map((r, i) => [i + 1, ...r, fmt(rows[i].med, 3), fmt(rows[i].R, 3)])
+      };
+    }
+
+    if(type === "imr"){
+      const xs = mat.map(r => r[0]);
+      const xbar = mean(xs);
+      const mrs = [];
+      for(let i = 1; i < xs.length; i++) mrs.push(Math.abs(xs[i] - xs[i - 1]));
+      const mrbar = mean(mrs);
+      const sig = mrbar / 1.128;
+      const uI = xbar + 2.66 * mrbar, lI = xbar - 2.66 * mrbar;
+      const uMR = 3.267 * mrbar;
+      out.panels.push(
+        {title:"I 图（单值）", ylab:"单值 x", vals:xs, cl:xbar,
+         ucl:arr(uI, xs.length), lcl:arr(lI, xs.length), sig:arr((uI - xbar) / 3, xs.length)},
+        {title:"MR 图（移动极差）", ylab:"移动极差", vals:mrs, cl:mrbar,
+         ucl:arr(uMR, mrs.length), lcl:arr(0, mrs.length), sig:arr((uMR - mrbar) / 3, mrs.length)}
+      );
+      out.stats = [
+        ["数据个数", xs.length], ["x̄（均值）", fmt(xbar, 3)], ["MR̄（平均移动极差）", fmt(mrbar, 3)],
+        ["σ̂ = MR̄/1.128", fmt(sig, 3)], ["I 图 UCL / LCL", `${fmt(uI, 3)} / ${fmt(lI, 3)}`],
+        ["MR 图 UCL", fmt(uMR, 3)]
+      ];
+      out.formula =
+`单值图的每批 n = 1，移动极差 Rs 取相邻两数据之差的绝对值（共 k−1 个）
+
+σ̂ = R̄s/d2(2) = ${mrbar.toFixed(4)}/1.128 = ${sig.toFixed(4)}
+I  图：CL = x̄ = ${xbar.toFixed(4)}，UCL = x̄ + 2.66·R̄s = ${uI.toFixed(4)}，LCL = x̄ − 2.66·R̄s = ${lI.toFixed(4)}
+MR 图：CL = R̄s = ${mrbar.toFixed(4)}，UCL = D4(2)·R̄s = 3.267×${mrbar.toFixed(4)} = ${uMR.toFixed(4)}，LCL = 0`;
+      out.table = {
+        head:["序号", "单值 x", "移动极差 Rs"],
+        rows: xs.map((v, i) => [i + 1, fmt(v, 3), i === 0 ? "—" : fmt(mrs[i - 1], 3)])
+      };
+      out.note = `共 ${xs.length} 个单值（n = 1，相邻两点的移动极差共 ${mrs.length} 个）`;
+    }
+    if(type !== "imr") out.note = `共 ${kk} 批，每批 n = ${n}`;
+  } else {
+    /* ---------------- 计数值 ---------------- */
+    const rows = mat.map(r => {
+      const cnt = r[0];
+      const nn = r.length > 1 ? r[1] : nGiven;
+      return {cnt, n: nn};
+    });
+    if(rows.every(r => !(r.n > 0)))
+      throw "数据中没有样本量：请在每行第 2 列填写样本量，或在左侧「样本量 n / 检验单位数」中填写统一的 n。";
+    rows.forEach((r, i) => {
+      if(!(r.cnt >= 0)) throw `第 ${i + 1} 行的不合格品数 / 缺陷数应为非负数。`;
+      if(!(r.n > 0)) throw `第 ${i + 1} 行缺少有效的样本量 n。`;
+      if(r.cnt > r.n && (type === "p" || type === "np")) throw `第 ${i + 1} 行不合格品数大于样本量。`;
+    });
+    const kk = rows.length;
+    const sumD = rows.reduce((s, r) => s + r.cnt, 0);
+    const sumN = rows.reduce((s, r) => s + r.n, 0);
+    const constN = rows.every(r => r.n === rows[0].n);
+
+    if(type === "np"){
+      if(!constN) throw "np 图要求每批样本量相同；样本量不同请改用 p 图（不合格品率控制图）。";
+      const n = rows[0].n, pbar = sumD / (kk * n), npbar = pbar * n;
+      const sig = Math.sqrt(npbar * (1 - pbar));
+      const u = npbar + 3 * sig, l = Math.max(0, npbar - 3 * sig);
+      out.panels.push({title:`np 图（每批 n=${n}）`, ylab:"不合格品数", vals:rows.map(r => r.cnt),
+        cl:npbar, ucl:arr(u, kk), lcl:arr(l, kk), sig:arr((u - npbar) / 3, kk)});
+      out.stats = [["批数 k", kk], ["样本量 n", n], ["ΣDi", sumD],
+        ["p̄（平均不合格品率）", (pbar * 100).toFixed(3) + "%"], ["D̄ = np̄", fmt(npbar, 3)],
+        ["UCL / LCL", `${fmt(u, 3)} / ${fmt(l, 3)}`]];
+      out.formula =
+`每批 n = ${n} 相同 → 用 np 图
+p̄ = ΣDi/(k·n) = ${sumD}/(${kk}×${n}) = ${pbar.toFixed(5)}，D̄ = n·p̄ = ${npbar.toFixed(4)}
+
+CL  = D̄ = ${npbar.toFixed(4)}
+UCL = D̄ + 3√[D̄(1−p̄)] = ${npbar.toFixed(4)} + 3×${sig.toFixed(4)} = ${u.toFixed(4)}
+LCL = D̄ − 3√[D̄(1−p̄)] = ${(npbar - 3 * sig).toFixed(4)}${npbar - 3 * sig < 0 ? "  < 0，取 0" : ""}`;
+      out.table = {head:["批号", "不合格品数 Di", "不合格品率 pi"], rows: rows.map((r, i) => [i + 1, r.cnt, (r.cnt / r.n * 100).toFixed(2) + "%"])};
+    }
+
+    if(type === "p"){
+      const pbar = sumD / sumN;
+      const ucl = rows.map(r => Math.min(1, pbar + 3 * Math.sqrt(pbar * (1 - pbar) / r.n)));
+      const lcl = rows.map(r => Math.max(0, pbar - 3 * Math.sqrt(pbar * (1 - pbar) / r.n)));
+      const sig = rows.map((r, i) => (ucl[i] - pbar) / 3);
+      out.panels.push({title:`p 图（${constN ? "每批 n=" + rows[0].n : "各批样本量不等"}）`, ylab:"不合格品率",
+        vals:rows.map(r => r.cnt / r.n), cl:pbar, ucl, lcl, sig, pct:true});
+      out.stats = [["批数 k", kk], ["ΣDi / Σni", `${sumD} / ${sumN}`],
+        ["p̄（平均不合格品率）", (pbar * 100).toFixed(3) + "%"],
+        ["UCL / LCL（按 n 变化）", constN ? `${(ucl[0] * 100).toFixed(2)}% / ${(lcl[0] * 100).toFixed(2)}%` : "逐批计算，见图中阶梯线"]];
+      out.formula =
+`p̄ = ΣDi/Σni = ${sumD}/${sumN} = ${pbar.toFixed(5)}
+
+CL  = p̄ = ${pbar.toFixed(5)}
+UCL_i = p̄ + 3√[p̄(1−p̄)/ni]
+LCL_i = max{0, p̄ − 3√[p̄(1−p̄)/ni]}
+${constN ? `本题各批 ni = ${rows[0].n} 相同，控制限为水平直线。` : "各批 ni 不同，控制限随 ni 逐批变化（阶梯线）。"}`;
+      out.table = {head:["批号", "不合格品数 Di", "样本量 ni", "不合格品率 pi", "UCL", "LCL"],
+        rows: rows.map((r, i) => [i + 1, r.cnt, r.n, (r.cnt / r.n * 100).toFixed(2) + "%", (ucl[i] * 100).toFixed(2) + "%", (lcl[i] * 100).toFixed(2) + "%"])};
+    }
+
+    if(type === "c"){
+      const cbar = sumD / kk;
+      const sig = Math.sqrt(cbar);
+      const u = cbar + 3 * sig, l = Math.max(0, cbar - 3 * sig);
+      out.panels.push({title:"c 图（检验单位数相同）", ylab:"缺陷数 c", vals:rows.map(r => r.cnt),
+        cl:cbar, ucl:arr(u, kk), lcl:arr(l, kk), sig:arr((u - cbar) / 3, kk)});
+      out.stats = [["检验单位数 k", kk], ["Σc", sumD], ["c̄（平均缺陷数）", fmt(cbar, 3)],
+        ["UCL / LCL", `${fmt(u, 3)} / ${fmt(l, 3)}`]];
+      out.formula =
+`c̄ = Σc/k = ${sumD}/${kk} = ${cbar.toFixed(4)}（缺陷数服从泊松分布，σ = √c̄）
+
+CL  = c̄ = ${cbar.toFixed(4)}
+UCL = c̄ + 3√c̄ = ${u.toFixed(4)}
+LCL = c̄ − 3√c̄ = ${(cbar - 3 * sig).toFixed(4)}${cbar - 3 * sig < 0 ? "  < 0，取 0" : ""}`;
+      out.table = {head:["序号", "缺陷数 c"], rows: rows.map((r, i) => [i + 1, r.cnt])};
+    }
+
+    if(type === "u"){
+      const ubar = sumD / sumN;
+      const ucl = rows.map(r => ubar + 3 * Math.sqrt(ubar / r.n));
+      const lcl = rows.map(r => Math.max(0, ubar - 3 * Math.sqrt(ubar / r.n)));
+      const sig = rows.map((r, i) => (ucl[i] - ubar) / 3);
+      out.panels.push({title:`u 图（${constN ? "每检验单位 n=" + rows[0].n : "各检验单位数不等"}）`, ylab:"单位缺陷数 u",
+        vals:rows.map(r => r.cnt / r.n), cl:ubar, ucl, lcl, sig});
+      out.stats = [["批数 k", kk], ["Σc / Σn", `${sumD} / ${sumN}`], ["ū（平均单位缺陷数）", fmt(ubar, 3)],
+        ["UCL / LCL（按 n 变化）", constN ? `${fmt(ucl[0], 3)} / ${fmt(lcl[0], 3)}` : "逐批计算，见图中阶梯线"]];
+      out.formula =
+`ū = Σc/Σn = ${sumD}/${sumN} = ${ubar.toFixed(4)}
+
+CL  = ū = ${ubar.toFixed(4)}
+UCL_i = ū + 3√(ū/ni)
+LCL_i = max{0, ū − 3√(ū/ni)}
+${constN ? `本题各检验单位 ni = ${rows[0].n} 相同，控制限为水平直线。` : "各检验单位数不同，控制限随 ni 逐批变化（阶梯线）。"}`;
+      out.table = {head:["批号", "缺陷数 ci", "检验单位数 ni", "单位缺陷数 ui", "UCL", "LCL"],
+        rows: rows.map((r, i) => [i + 1, r.cnt, r.n, (r.cnt / r.n).toFixed(3), fmt(ucl[i], 3), fmt(lcl[i], 3)])};
+    }
+    out.note = type === "c" ? `共 ${kk} 个检验单位（检验单位大小相同）`
+             : type === "p" || type === "u" ? `共 ${kk} 批`
+             : `共 ${kk} 批，每批 n = ${rows[0].n}`;
+  }
+
+  /* 判异 */
+  out.panels.forEach(p => {
+    const hits = checkRules(p.vals, p.ucl, p.lcl, p.cl, p.sig);
+    p.hits = hits;
+    hits.forEach(h => out.hits.push({panel:p.title, ...h}));
+  });
+  return out;
+}
+
+/* ============================================================
+   六、绘图（canvas）
+   ============================================================ */
+let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+function drawAll(res, digits){
+  const cvs = $("chart"), ctx = cvs.getContext("2d");
+  const W = cvs.parentElement.clientWidth - 12;
+  const panelH = 240, gap = 22;
+  const H = res.panels.length * panelH + (res.panels.length - 1) * gap + 8;
+
+  cvs.style.height = H + "px";
+  cvs.width = Math.round(W * DPR);
+  cvs.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  res.panels.forEach((p, pi) => {
+    drawPanel(ctx, p, 0, pi * (panelH + gap), W, panelH, digits);
+  });
+}
+
+function drawPanel(ctx, p, ox, oy, W, H, digits){
+  const padL = 66, padR = 74, padT = 30, padB = 30;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const k = p.vals.length;
+
+  // y 范围
+  let lo = Math.min(...p.vals, ...p.lcl), hi = Math.max(...p.vals, ...p.ucl);
+  if(hi - lo < 1e-9){ hi += 1; lo -= 1; }
+  const pad = (hi - lo) * 0.12; hi += pad; lo -= pad;
+  const Y = v => oy + padT + ih - (v - lo) / (hi - lo) * ih;
+  const X = i => ox + padL + (k === 1 ? iw / 2 : (i + 0.5) * iw / k);
+
+  // 背景网格
+  ctx.strokeStyle = "#eef0f3"; ctx.lineWidth = 1;
+  for(let g = 0; g <= 4; g++){
+    const y = oy + padT + ih * g / 4;
+    ctx.beginPath(); ctx.moveTo(ox + padL, y); ctx.lineTo(ox + padL + iw, y); ctx.stroke();
+  }
+  // 坐标框
+  ctx.strokeStyle = "#d9dde3";
+  ctx.beginPath(); ctx.rect(ox + padL, oy + padT, iw, ih); ctx.stroke();
+
+  // y 轴刻度
+  ctx.fillStyle = "#6b7280"; ctx.font = "11px Consolas, monospace";
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for(let g = 0; g <= 4; g++){
+    const v = hi - (hi - lo) * g / 4;
+    ctx.fillText(p.pct ? (v * 100).toFixed(2) + "%" : v.toFixed(digits), ox + padL - 8, oy + padT + ih * g / 4);
+  }
+
+  // 控制限
+  const lineY = (arr, color, dash) => {
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.4;
+    ctx.setLineDash(dash);
+    ctx.beginPath();
+    for(let i = 0; i < k; i++){
+      const x1 = ox + padL + (i === 0 ? 0 : (i - 0.5) * iw / k);
+      const x2 = ox + padL + (i === k - 1 ? iw : (i + 0.5) * iw / k);
+      const y = Y(arr[i]);
+      ctx.moveTo(x1, y); ctx.lineTo(x2, y);
+    }
+    ctx.stroke(); ctx.restore();
+  };
+  lineY(p.lcl, "#e06a6a", [5, 4]);
+  lineY(p.ucl, "#e06a6a", [5, 4]);
+  lineY(Array(k).fill(p.cl), "#12805c", []);
+
+  // 限值标注（右端）
+  const tag = (v, label, color) => {
+    ctx.fillStyle = color; ctx.font = "10.5px Consolas, monospace";
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(`${label} ${p.pct ? (v * 100).toFixed(2) + "%" : v.toFixed(digits)}`,
+                 ox + padL + iw + 6, Y(v));
+  };
+  tag(p.ucl[k - 1], "UCL", "#c14b4b");
+  tag(p.cl, "CL", "#12805c");
+  tag(p.lcl[k - 1], "LCL", "#c14b4b");
+
+  // 折线
+  ctx.strokeStyle = "#8ea3c0"; ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  p.vals.forEach((v, i) => { const x = X(i), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.stroke();
+
+  // 点
+  const hitIdx = new Set();
+  (p.hits || []).forEach(h => h.idx.forEach(i => hitIdx.add(i)));
+  p.vals.forEach((v, i) => {
+    const x = X(i), y = Y(v), bad = hitIdx.has(i);
+    ctx.beginPath(); ctx.arc(x, y, bad ? 4.6 : 3.4, 0, Math.PI * 2);
+    ctx.fillStyle = bad ? "#d93a3a" : "#2f6fed";
+    ctx.fill();
+    if(bad){ ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.4; ctx.stroke(); }
+  });
+
+  // 标题
+  ctx.fillStyle = "#1f2328"; ctx.font = "600 12.5px 'Microsoft YaHei', sans-serif";
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(p.title, ox + padL, oy + 20);
+  ctx.fillStyle = "#6b7280"; ctx.font = "11px 'Microsoft YaHei', sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(p.ylab, ox + padL + iw, oy + 20);
+
+  // x 轴
+  ctx.fillStyle = "#6b7280"; ctx.font = "11px Consolas, monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const step = k > 26 ? Math.ceil(k / 13) : 1;
+  for(let i = 0; i < k; i++){
+    if(i % step === 0 || i === k - 1) ctx.fillText(i + 1, X(i), oy + padT + ih + 6);
+  }
+  ctx.textAlign = "right";
+  ctx.fillText("批号", ox + padL + iw, oy + padT + ih + 6);
+}
+
+/* ============================================================
+   七、示例数据
+   ============================================================ */
+const DEMO = {
+  xbs:`83.0 81.2 78.7 75.7 77.0
+88.6 78.3 78.8 71.0 84.2
+85.7 75.8 84.3 75.2 81.0
+80.8 74.4 82.5 74.1 75.7
+83.4 78.4 82.6 78.2 78.9
+75.3 79.9 87.3 89.7 81.8
+74.5 78.0 80.8 73.4 79.7
+79.2 84.4 81.5 86.0 74.5
+80.5 86.2 76.2 64.1 80.2
+75.7 75.2 71.1 82.1 74.3
+80.0 81.5 78.4 73.8 78.1
+80.6 81.8 79.3 73.8 81.7
+82.7 81.3 79.1 82.0 79.5
+79.2 74.9 78.6 77.7 75.3
+85.5 82.1 82.8 73.4 71.7
+78.8 79.6 80.2 79.1 80.8
+82.1 78.2 75.5 78.2 82.1
+84.5 76.9 83.5 81.2 79.2
+79.0 77.8 81.2 84.4 81.6
+84.5 73.1 78.6 78.7 80.6`,
+  xbr:`12.10 12.05 12.08 12.02 12.06
+12.02 12.00 11.98 12.01 11.99
+11.97 12.03 12.02 12.04 12.10
+12.15 12.11 12.06 12.08 12.12
+11.95 11.97 11.92 11.99 11.94
+12.06 12.09 12.01 12.05 12.03`,
+  mer:`9.02 9.05 9.01 9.06 9.03
+8.98 9.01 9.00 9.03 8.97
+9.06 9.04 9.08 9.02 9.05
+9.10 9.07 9.12 9.08 9.09
+9.01 8.96 8.99 8.98 9.00
+8.95 8.97 8.94 8.99 8.96`,
+  imr:`12.30
+12.28
+12.31
+12.26
+12.29
+12.25
+12.31
+12.34
+12.27
+12.30
+12.24
+12.22
+12.25
+12.29
+12.27
+12.28
+12.32
+12.35
+12.30
+12.26`,
+  p:`5 150
+1 150
+3 150
+0 150
+2 150
+4 150
+0 150
+1 150
+7 150
+6 150
+6 150
+0 150
+4 150
+0 150
+3 150
+1 150
+7 150
+2 150
+3 150
+0 150`,
+  np:`5 150
+1 150
+3 150
+0 150
+2 150
+4 150
+0 150
+1 150
+7 150
+6 150
+6 150
+0 150
+4 150
+0 150
+3 150
+1 150
+7 150
+2 150
+3 150
+0 150`,
+  c:`3
+5
+2
+4
+1
+3
+2
+6
+4
+3
+2
+5
+1
+2
+3
+4
+2
+3
+1
+2`,
+  u:`3 2
+5 2
+2 2.5
+4 2
+1 1.5
+3 2
+2 2.5
+6 3
+4 2
+3 2
+2 2
+5 2.5
+1 2
+2 1.5
+3 2
+4 2
+2 2.5
+3 2
+1 2
+2 2`
+};
+
+/* ============================================================
+   八、界面交互
+   ============================================================ */
+const HINTS = {
+  xbs:"每行是一批（子组），每列是一个测量值。样本量 n 由列数自动识别。",
+  xbr:"每行是一批（子组），每列是一个测量值。样本量 n 由列数自动识别。",
+  mer:"每行是一批（子组），每列是一个测量值，n 建议取 3~9 的奇数。",
+  imr:"每行一个单值；整张图即一条时间序列（n = 1）。",
+  p:"每行：不合格品数 [样本量]。样本量不同也能算，控制限随 n 变化。",
+  np:"每行：不合格品数 [样本量]，各批样本量必须相同。",
+  u:"每行：缺陷数 [检验单位数]，检验单位数可以不相等。",
+  c:"每行：一个检验单位内的缺陷数（检验单位大小相同）。"
+};
+const PLACE = {
+  xbs:"83.0 81.2 78.7 75.7 77.0\n88.6 78.3 78.8 71.0 84.2\n…（每行一批）",
+  xbr:"12.10 12.05 12.08 12.02 12.06\n12.02 12.00 11.98 12.01 11.99\n…",
+  mer:"9.02 9.05 9.01 9.06 9.03\n8.98 9.01 9.00 9.03 8.97\n…",
+  imr:"12.30\n12.28\n12.31\n…（每行一个单值）",
+  p:"5 150\n1 150\n3 150\n…（不合格品数 样本量）",
+  np:"5 150\n1 150\n3 150\n…（不合格品数 样本量）",
+  u:"3 2\n5 2\n2 2.5\n…（缺陷数 检验单位数）",
+  c:"3\n5\n2\n…（每行一个检验单位的缺陷数）"
+};
+
+function syncType(){
+  const t = $("type").value;
+  $("dataHint").textContent = HINTS[t];
+  $("data").placeholder = PLACE[t];
+  const isVar = TYPES[t].kind === "var";
+  const autoN = isVar || t === "imr";           // 这两类图的 n 由数据本身决定
+  const inp = $("nInput");
+  inp.value = "";                               // 每换一种图就清空，交给使用者自己填
+  inp.disabled = autoN;
+  inp.placeholder = autoN ? "自动识别" : (t === "c" ? "可留空" : "如需请填写");
+  $("nHint").textContent = autoN
+    ? "样本量由数据列数自动识别，无需填写。"
+    : (t === "c"
+        ? "c 图各检验单位大小相同，n 仅用于记录，可留空。"
+        : "数据每行若已带样本量（第 2 列），此处留空即可；只有数据仅一列时，才需在此填写统一的 n。");
+  $("formula").textContent = "";
+  $("stats").innerHTML = "";
+  $("verdict").innerHTML = "";
+  $("tableBox").innerHTML = "";
+  const cvs = $("chart"), ctx = cvs.getContext("2d");
+  cvs.width = 0; cvs.height = 0;
+  $("resultTitle").textContent = TYPES[t].label;
+}
+
+function run(){
+  $("err").style.display = "none";
+  try{
+    const t = $("type").value;
+    const mat = parseMatrix($("data").value);
+    const digits = Math.max(0, Math.min(6, parseInt($("digits").value || "2", 10)));
+    const nGiven = parseFloat($("nInput").value || "0");
+    const res = compute(t, mat, nGiven);
+
+    // 统计卡片
+    $("stats").innerHTML = res.stats.map(([k, v]) =>
+      `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+
+    // 图
+    requestAnimationFrame(() => drawAll(res, digits));
+
+    // 判定
+    const box = $("verdict");
+    if(!res.hits.length){
+      box.className = "verdict good";
+      box.innerHTML = `<b>结论：过程处于统计受控状态。</b>${res.note}。未触发课件 3.2.4 的 8 条判异规则。`;
+    }else{
+      box.className = "verdict bad";
+      box.innerHTML = `<b>结论：过程未处于统计受控状态。</b>${res.note}。触发以下判异规则：<ul>` +
+        res.hits.map(h => `<li>${h.panel} · ${h.name}（第 ${h.idx.map(i => i + 1).join("、")} 点）</li>`).join("") +
+        `</ul>`;
+    }
+
+    // 数据表
+    const tb = res.table;
+    if(tb){
+      const hitSet = new Set();
+      res.panels.forEach(p => (p.hits || []).forEach(h => h.idx.forEach(i => hitSet.add(i))));
+      $("tableBox").innerHTML =
+        `<table><thead><tr>${tb.head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>` +
+        tb.rows.map((r, i) => `<tr class="${hitSet.has(i) ? "hit" : ""}">` +
+          r.map(c => `<td>${c}</td>`).join("") + `</tr>`).join("") +
+        `</tbody></table>`;
+    }
+
+    // 公式
+    $("formula").textContent = res.formula;
+    $("resultTitle").textContent = TYPES[t].label;
+  }catch(e){
+    $("err").style.display = "block";
+    $("err").textContent = "× " + e;
+  }
+}
+
+/* 事件 */
+$("type").addEventListener("change", syncType);
+$("calc").addEventListener("click", run);
+$("demo").addEventListener("click", () => { $("data").value = DEMO[$("type").value]; run(); });
+$("clear").addEventListener("click", () => {
+  $("data").value = ""; $("err").style.display = "none";
+  $("stats").innerHTML = ""; $("verdict").innerHTML = ""; $("tableBox").innerHTML = ""; $("formula").textContent = "";
+  const c = $("chart"); c.width = 0; c.height = 0;
+});
+window.addEventListener("resize", () => {
+  if($("data").value.trim()) run();
+});
+$("data").addEventListener("keydown", e => {
+  if((e.ctrlKey || e.metaKey) && e.key === "Enter") run();
+});
+
+/* 初始化 */
+syncType();
+$("data").value = DEMO.xbs;
+run();
+</script>
+</body>
+</html>
